@@ -1,0 +1,103 @@
+//! The grammar for the Coup Programming Language
+
+// Ensure that the whole program is parsed
+program = {
+    SOI
+    ~ (statement)+
+    ~ EOI
+}
+
+statement = {
+    skip_stm
+    | let_stm
+    | if_stm
+    | while_stm
+    | expr_stm
+    | return_stm
+}
+
+skip_stm = { "skip" ~ ";" }
+let_stm = { "let" ~ var_declaration ~ "=" ~ expr ~ ";" }
+if_stm = { "if" ~ expr ~ blk_expr ~ ("else if" ~ expr ~ blk_expr)* ~ ("else" ~ blk_expr)? }
+while_stm = { "while" ~ expr ~ blk_expr }
+expr_stm = { expr ~ ":" }
+return_stm = { "return" ~ expr ~ ";" }
+
+expr = {
+    bool_expr
+    | arithmetic_expr
+    | function_expr
+    | blk_expr
+    | literal
+    | var
+}
+
+bool_expr = {
+    and_expr
+    | or_expr
+    | eq_expr
+    | le_expr
+    | leq_expr
+    | ge_expr
+    | geq_expr
+    | neg_expr
+}
+
+and_expr = { (bool_lit | "(" ~ expr ~ ")") ~ "&&" ~ expr }
+or_expr = { (bool_lit | "(" ~ expr ~ ")") ~ "||" ~ expr }
+eq_expr = { (bool_lit | "(" ~ expr ~ ")") ~ "==" ~ expr }
+neg_expr = { "!" ~ expr }
+
+ari_fun = { arithmetic_expr | function_expr }
+le_expr = { ari_fun ~ "<" ~ ari_fun }
+leq_expr = { ari_fun ~ "<=" ~ ari_fun }
+ge_expr = { ari_fun ~ ">" ~ ari_fun }
+geq_expr = { ari_fun ~ ">=" ~ ari_fun }
+
+arithmetic_expr = {
+    add_expr
+    | sub_expr
+    | mul_expr
+    | div_expr
+    | mod_expr
+}
+add_expr = { "(" ~ expr ~ ")" ~ "+" ~ expr }
+sub_expr = { "(" ~ expr ~ ")" ~ "_" ~ expr }
+mul_expr = { "(" ~ expr ~ ")" ~ "*" ~ expr }
+div_expr = { "(" ~ expr ~ ")" ~ "/" ~ expr }
+mod_expr = { "(" ~ expr ~ ")" ~ "%" ~ expr }
+
+function_expr = { lambda_expr | apply_expr }
+lambda_expr = { ".\\" ~ var_declarations ~ (typing)? ~ "->" ~ expr }
+apply_expr = { var ~ vars }
+
+blk_expr = { "{" ~ (statement)+ ~ "}" }
+
+literal = { int_lit | str_lit | float_lit | bool_lit | unit_lit }
+int_lit = @{ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+str_lit = @{ "\"" ~ ASCII_ALPHANUMERIC* ~ "\"" }
+float_lit = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+bool_lit = { true | false }
+true = { "true" }
+false = { "false" }
+unit_lit = { "()" }
+
+var = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+vars = { "(" ~ (var ~ ("," ~ var)*)? ~ ")" }
+
+type = { type_full | type_val | type_label }
+type_full = { value_type ~ "@" ~ labels }
+type_val = { value_type }
+type_label = { "_" ~ "@" ~ labels }
+
+value_type = { "int" | "str" | "float" | "bool" | "()" }
+label = @{ "\"" ~ var ~ "\"" }
+labels = { "[" ~ (label ~ ("," ~ label)*)? ~ "]" }
+
+typing = { ":" ~ type }
+
+var_declaration = { var ~ typing? }
+var_declarations = { "(" ~ (var_declaration ~ ("," ~ var_declaration)*)? ~ ")" }
+
+WHITESPACE = _{ " " | NEWLINE | "\t"}
+COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* }
