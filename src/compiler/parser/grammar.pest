@@ -43,12 +43,12 @@ bool_expr = {
     | neg_expr
 }
 
-and_expr = { (bool_lit | "(" ~ expr ~ ")") ~ "&&" ~ expr }
-or_expr = { (bool_lit | "(" ~ expr ~ ")") ~ "||" ~ expr }
-eq_expr = { (bool_lit | "(" ~ expr ~ ")") ~ "==" ~ expr }
+and_expr = { (bool_lit | var | "(" ~ expr ~ ")") ~ "&&" ~ expr }
+or_expr = { (bool_lit | var | "(" ~ expr ~ ")") ~ "||" ~ expr }
+eq_expr = { (bool_lit | var | "(" ~ expr ~ ")") ~ "==" ~ expr }
 neg_expr = { "!" ~ expr }
 
-ari_fun = { arithmetic_expr | function_expr }
+ari_fun = { arithmetic_expr | function_expr | literal | var }
 le_expr = { ari_fun ~ "<" ~ ari_fun }
 leq_expr = { ari_fun ~ "<=" ~ ari_fun }
 ge_expr = { ari_fun ~ ">" ~ ari_fun }
@@ -61,11 +61,11 @@ arithmetic_expr = {
     | div_expr
     | mod_expr
 }
-add_expr = { "(" ~ expr ~ ")" ~ "+" ~ expr }
-sub_expr = { "(" ~ expr ~ ")" ~ "_" ~ expr }
-mul_expr = { "(" ~ expr ~ ")" ~ "*" ~ expr }
-div_expr = { "(" ~ expr ~ ")" ~ "/" ~ expr }
-mod_expr = { "(" ~ expr ~ ")" ~ "%" ~ expr }
+add_expr = { (literal | var | "(" ~ expr ~ ")") ~ "+" ~ expr }
+sub_expr = { (literal | var | "(" ~ expr ~ ")") ~ "-" ~ expr }
+mul_expr = { (literal | var | "(" ~ expr ~ ")") ~ "*" ~ expr }
+div_expr = { (literal | var | "(" ~ expr ~ ")") ~ "/" ~ expr }
+mod_expr = { (literal | var | "(" ~ expr ~ ")") ~ "%" ~ expr }
 
 function_expr = { lambda_expr | apply_expr }
 lambda_expr = { ".\\" ~ var_declarations ~ (typing)? ~ "->" ~ expr }
@@ -73,8 +73,9 @@ apply_expr = { var ~ vars }
 
 blk_expr = { "{" ~ (statement)+ ~ "}" }
 
-literal = { int_lit | str_lit | float_lit | bool_lit | unit_lit }
-int_lit = @{ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+literal = { literal_part ~ labels? }
+literal_part = { int_lit | str_lit | float_lit | bool_lit | unit_lit }
+int_lit = @{ ASCII_DIGIT+ }
 str_lit = @{ "\"" ~ ASCII_ALPHANUMERIC* ~ "\"" }
 float_lit = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 bool_lit = { true | false }
@@ -86,13 +87,13 @@ var = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 vars = { "(" ~ (var ~ ("," ~ var)*)? ~ ")" }
 
 type = { type_full | type_val | type_label }
-type_full = { value_type ~ "@" ~ labels }
+type_full = { value_type ~ labels }
 type_val = { value_type }
-type_label = { "_" ~ "@" ~ labels }
+type_label = { "_" ~ labels }
 
 value_type = { "int" | "str" | "float" | "bool" | "()" }
 label = @{ "\"" ~ var ~ "\"" }
-labels = { "[" ~ (label ~ ("," ~ label)*)? ~ "]" }
+labels = { "@" ~ "[" ~ (label ~ ("," ~ label)*)? ~ "]" }
 
 typing = { ":" ~ type }
 

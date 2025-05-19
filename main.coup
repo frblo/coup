@@ -1,0 +1,7 @@
+let i: int@[] = 10;
+let res = 0@["a"];
+while i < 10 {
+    let res = res + i;
+    let i = i - 1;
+}
+
