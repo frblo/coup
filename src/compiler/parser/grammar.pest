@@ -68,8 +68,8 @@ div_expr = { (literal | var | "(" ~ expr ~ ")") ~ "/" ~ expr }
 mod_expr = { (literal | var | "(" ~ expr ~ ")") ~ "%" ~ expr }
 
 function_expr = { lambda_expr | apply_expr }
-lambda_expr = { ".\\" ~ var_declarations ~ (typing)? ~ "->" ~ expr }
-apply_expr = { var ~ vars }
+lambda_expr = { ".\\" ~ var_declarations ~ ("->" ~ type)? ~ "=>" ~ expr }
+apply_expr = { var ~ "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
 
 blk_expr = { "{" ~ (statement)+ ~ "}" }
 
@@ -87,11 +87,12 @@ var = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 vars = { "(" ~ (var ~ ("," ~ var)*)? ~ ")" }
 
 type = { type_full | type_val | type_label }
-type_full = { value_type ~ labels }
-type_val = { value_type }
+type_full = { (value_type | fun_type) ~ labels }
+type_val = { value_type | fun_type }
 type_label = { "_" ~ labels }
 
-value_type = { "int" | "str" | "float" | "bool" | "()" }
+value_type = { "int" | "str" | "float" | "bool" }
+fun_type = { "(" ~ value_type ~ labels? ~ "->" ~ type ~ ")" }
 label = @{ "\"" ~ var ~ "\"" }
 labels = { "@" ~ "[" ~ (label ~ ("," ~ label)*)? ~ "]" }
 
