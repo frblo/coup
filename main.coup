@@ -1,7 +1,11 @@
-let i: int@[] = 10;
+let fun: (int -> (int -> int)) = .\ (step: int, val: int)->int=>step+val;
+
+let i: int = 10;
+let step = 1;
 let res = 0@["a"];
+let step_fun = fun(step);
+
 while i < 10 {
-    let res = res + i;
+    let res = step_fun(res);
     let i = i - 1;
 }
-
