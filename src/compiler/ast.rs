@@ -1,5 +1,19 @@
 #[derive(Debug)]
-pub struct Program(pub Vec<Stmt>);
+pub struct Spanned<T> {
+    pub text: String,
+    pub node: T,
+    pub line: usize,
+    pub col: usize,
+}
+
+impl<T> Spanned<T> {
+    pub fn new(node: T, line_col: (usize, usize), text: String) -> Self {
+        Self { node, line: line_col.0, col: line_col.1, text }
+    }
+}
+
+#[derive(Debug)]
+pub struct Program(pub Vec<Spanned<Stmt>>);
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -7,20 +21,20 @@ pub enum Stmt {
     Let {
         var: String,
         ty: Type,
-        value: Expr,
+        value: Spanned<Expr>,
     },
     If {
-        condition: Expr,
-        then_branch: Expr,
-        else_if_branches: Vec<(Expr, Expr)>,
-        else_branch: Option<Expr>,
+        condition: Spanned<Expr>,
+        then_branch: Spanned<Expr>,
+        else_if_branches: Vec<(Spanned<Expr>, Spanned<Expr>)>,
+        else_branch: Option<Spanned<Expr>>,
     },
     While {
-        condition: Expr,
-        body: Expr,
+        condition: Spanned<Expr>,
+        body: Spanned<Expr>,
     },
-    Expr(Expr),
-    Return(Expr),
+    Expr(Spanned<Expr>),
+    Return(Spanned<Expr>),
 }
 
 #[derive(Debug)]
@@ -28,30 +42,30 @@ pub enum Expr {
     Bool(Box<BoolExpr>),
     Arithmetic(Box<ArithmeticExpr>),
     Function(Box<FunctionExpr>),
-    Block(Vec<Stmt>),
+    Block(Vec<Spanned<Stmt>>),
     Literal(Literal, Type),
     Var(String),
 }
 
 #[derive(Debug)]
 pub enum BoolExpr {
-    And(Expr, Expr),
-    Or(Expr, Expr),
-    Eq(Expr, Expr),
-    Neg(Expr),
-    Le(Expr, Expr),
-    Leq(Expr, Expr),
-    Ge(Expr, Expr),
-    Geq(Expr, Expr),
+    And(Spanned<Expr>, Spanned<Expr>),
+    Or(Spanned<Expr>, Spanned<Expr>),
+    Eq(Spanned<Expr>, Spanned<Expr>),
+    Neg(Spanned<Expr>),
+    Le(Spanned<Expr>, Spanned<Expr>),
+    Leq(Spanned<Expr>, Spanned<Expr>),
+    Ge(Spanned<Expr>, Spanned<Expr>),
+    Geq(Spanned<Expr>, Spanned<Expr>),
 }
 
 #[derive(Debug)]
 pub enum ArithmeticExpr {
-    Add(Expr, Expr),
-    Sub(Expr, Expr),
-    Mul(Expr, Expr),
-    Div(Expr, Expr),
-    Mod(Expr, Expr),
+    Add(Spanned<Expr>, Spanned<Expr>),
+    Sub(Spanned<Expr>, Spanned<Expr>),
+    Mul(Spanned<Expr>, Spanned<Expr>),
+    Div(Spanned<Expr>, Spanned<Expr>),
+    Mod(Spanned<Expr>, Spanned<Expr>),
 }
 
 #[derive(Debug)]
@@ -60,11 +74,11 @@ pub enum FunctionExpr {
         var: String,
         var_ty: Type,
         ret_ty: Type,
-        expr: Expr,
+        expr: Spanned<Expr>,
     },
     Apply {
-        fun: Expr,
-        arg: Expr,
+        fun: Spanned<Expr>,
+        arg: Spanned<Expr>,
     },
 }
 
@@ -78,8 +92,8 @@ pub enum Literal {
 
 #[derive(Debug)]
 pub struct Type {
-    pub value: Option<Value>,
-    pub label: Option<Vec<String>>,
+    pub value: Option<Spanned<Value>>,
+    pub label: Option<Spanned<Vec<String>>>,
 }
 
 impl Type {
@@ -102,3 +116,4 @@ pub enum Value {
         return_type: Box<Type>,
     },
 }
+

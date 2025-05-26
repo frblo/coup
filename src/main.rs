@@ -12,6 +12,8 @@ fn main() {
         Ok(ast) => {
             for stmt in ast.0 {
                 println!("{:?}", stmt);
+            for stmt in &ast.0 {
+                println!("{:#?}", stmt);
             }
         }
     }

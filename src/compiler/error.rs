@@ -2,6 +2,8 @@ use thiserror::Error;
 
 use super::parser::Rule;
 
+pub type Result<T> = core::result::Result<T, CompilerError>;
+
 #[derive(Error, Debug)]
 pub enum CompilerError {
     #[error("Parsing failed with:\n{0}")]
