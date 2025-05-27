@@ -1,16 +1,5 @@
-#[derive(Debug)]
-pub struct Spanned<T> {
-    pub text: String,
-    pub node: T,
-    pub line: usize,
-    pub col: usize,
-}
-
-impl<T> Spanned<T> {
-    pub fn new(node: T, line_col: (usize, usize), text: String) -> Self {
-        Self { node, line: line_col.0, col: line_col.1, text }
-    }
-}
+use super::PartialType;
+use super::spanned::Spanned;
 
 #[derive(Debug)]
 pub struct Program(pub Vec<Spanned<Stmt>>);
@@ -20,7 +9,7 @@ pub enum Stmt {
     Skip,
     Let {
         var: String,
-        ty: Type,
+        ty: Spanned<PartialType>,
         value: Spanned<Expr>,
     },
     If {
@@ -43,7 +32,7 @@ pub enum Expr {
     Arithmetic(Box<ArithmeticExpr>),
     Function(Box<FunctionExpr>),
     Block(Vec<Spanned<Stmt>>),
-    Literal(Literal, Type),
+    Literal(Literal, Spanned<PartialType>),
     Var(String),
 }
 
@@ -72,8 +61,8 @@ pub enum ArithmeticExpr {
 pub enum FunctionExpr {
     Lambda {
         var: String,
-        var_ty: Type,
-        ret_ty: Type,
+        var_ty: Spanned<PartialType>,
+        ret_ty: Spanned<PartialType>,
         expr: Spanned<Expr>,
     },
     Apply {
@@ -88,32 +77,5 @@ pub enum Literal {
     Bool(bool),
     Float(f64),
     Unit,
-}
-
-#[derive(Debug)]
-pub struct Type {
-    pub value: Option<Spanned<Value>>,
-    pub label: Option<Spanned<Vec<String>>>,
-}
-
-impl Type {
-    pub fn empty() -> Self {
-        Self {
-            value: None,
-            label: None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum Value {
-    Int,
-    Bool,
-    Float,
-    Unit,
-    Function {
-        param: Box<Type>,
-        return_type: Box<Type>,
-    },
 }
 

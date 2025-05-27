@@ -6,10 +6,15 @@ use pest::iterators::Pair;
 use pest::iterators::Pairs;
 use pest_derive::Parser;
 
-use super::ast;
-use super::ast::Spanned;
 use super::error::CompilerError;
 use super::error::Result;
+
+use super::types::ast;
+use super::types::PartialValue;
+use super::types::spanned::Spanned;
+use super::types::PartialType;
+use super::types::label;
+use super::types::label::Labels;
 
 #[derive(Parser)]
 #[grammar = "compiler/parser/grammar.pest"]
@@ -299,7 +304,7 @@ fn lambda_helper(
     if vars.peek().is_none() {
         let ret_ty = match ty_p {
             Some(p) => parse_type(p)?,
-            None => ast::Type::empty(),
+            None => Spanned::new(PartialType::empty(), line_col, "".to_string()),
         };
         let expr = parse_expr(expr_p)?;
 
@@ -310,13 +315,24 @@ fn lambda_helper(
             expr,
         })
     } else {
-        let expr = Spanned::new(ast::Expr::Function(Box::new(lambda_helper(pos, vars, ty_p, expr_p)?)), line_col, text);
+        let f_expr = lambda_helper(pos, vars, ty_p, expr_p)?;
+        let ret_ty = match &f_expr {
+            ast::FunctionExpr::Lambda { var: _, var_ty, ret_ty, expr: _ } => {
+                let p_t = PartialType {
+                    value: Some(PartialValue::Function { param: Box::new(var_ty.node.clone()), return_type: Box::new(ret_ty.node.clone()) }),
+                    labels: None,
+                };
+                Spanned::new(p_t, line_col, "".to_string())
+            },
+            _ => unreachable!("fn lambdahelper produces apply statement"),
+        };
+        let expr = Spanned::new(ast::Expr::Function(Box::new(f_expr)), line_col, text);
 
         Ok(ast::FunctionExpr::Lambda {
             var,
             var_ty,
-            ret_ty: ast::Type::empty(),
-            expr,
+            ret_ty,
+            expr
         })
     }
 }
@@ -362,33 +378,29 @@ fn parse_blk(p: Pair<'_, Rule>) -> Result<ast::Expr> {
 
 fn parse_literal(p: Pair<'_, Rule>) -> Result<ast::Expr> {
     let pos = p.line_col();
+    let text = p.as_str().to_string();
     let mut children = p.into_inner();
     let literal_part = children.next().ok_or(CompilerError::MissingNode(pos))?;
-    let val_pos = literal_part.line_col();
-    let val_text = literal_part.as_str().to_string();
     let literal = literal_helper(literal_part)?;
 
     let value = match literal {
-        ast::Literal::Int(_) => ast::Value::Int,
-        ast::Literal::Float(_) => ast::Value::Float,
-        ast::Literal::Bool(_) => ast::Value::Bool,
-        ast::Literal::Unit => ast::Value::Unit,
+        ast::Literal::Int(_) => PartialValue::Int,
+        ast::Literal::Float(_) => PartialValue::Float,
+        ast::Literal::Bool(_) => PartialValue::Bool,
+        ast::Literal::Unit => PartialValue::Unit,
     };
-    let spanned_val = Spanned::new(value, val_pos, val_text);
 
     let ty = if let Some(labels_p) = children.next() {
-        let label_pos = labels_p.line_col();
-        let label_text = labels_p.as_str().to_string();
         let label = parse_labels(labels_p)?;
-        ast::Type {
-            value: Some(spanned_val),
-            label: Some(Spanned::new(label, label_pos, label_text)),
-        }
+        Spanned::new(PartialType {
+            value: Some(value),
+            labels: Some(label),
+        }, pos, text)
     } else {
-        ast::Type {
-            value: Some(spanned_val),
-            label: None,
-        }
+        Spanned::new(PartialType {
+            value: Some(value),
+            labels: None,
+        }, pos, text)
     };
 
     Ok(ast::Expr::Literal(literal, ty))
@@ -433,7 +445,7 @@ fn bin_op_helper(p: Pair<'_, Rule>) -> Result<(Spanned<ast::Expr>, Spanned<ast::
     Ok((left, right))
 }
 
-fn parse_var_declration(p: Pair<'_, Rule>) -> Result<(String, ast::Type)> {
+fn parse_var_declration(p: Pair<'_, Rule>) -> Result<(String, Spanned<PartialType>)> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let var = children
@@ -449,17 +461,15 @@ fn parse_var_declration(p: Pair<'_, Rule>) -> Result<(String, ast::Type)> {
             .ok_or(CompilerError::MissingNode(pos))?;
         parse_type(t)?
     } else {
-        ast::Type {
-            value: None,
-            label: None,
-        }
+        Spanned::new(PartialType::empty(), pos, "".to_string())
     };
 
     Ok((var, ty))
 }
 
-fn parse_type(p: Pair<'_, Rule>) -> Result<ast::Type> {
+fn parse_type(p: Pair<'_, Rule>) -> Result<Spanned<PartialType>> {
     let pos = p.line_col();
+    let text = p.as_str().to_string();
     let child = p
         .into_inner()
         .next()
@@ -468,15 +478,11 @@ fn parse_type(p: Pair<'_, Rule>) -> Result<ast::Type> {
         Rule::type_full => {
             let mut children = child.into_inner();
             let value_type = children.next().ok_or(CompilerError::MissingNode(pos))?;
-            let val_pos = value_type.line_col();
-            let val_text = value_type.as_str().to_string();
             let labels = children.next().ok_or(CompilerError::MissingNode(pos))?;
-            let labels_pos = labels.line_col();
-            let labels_text = labels.as_str().to_string();
 
             (
-                Some(Spanned::new(parse_value_type(value_type)?, val_pos, val_text)),
-                Some(Spanned::new(parse_labels(labels)?, labels_pos, labels_text)),
+                Some(parse_value_type(value_type)?),
+                Some(parse_labels(labels)?),
             )
         }
         Rule::type_val => {
@@ -484,35 +490,31 @@ fn parse_type(p: Pair<'_, Rule>) -> Result<ast::Type> {
                 .into_inner()
                 .next()
                 .ok_or(CompilerError::MissingNode(pos))?;
-            let val_pos = value_type.line_col();
-            let val_text = value_type.as_str().to_string();
-            (Some(Spanned::new(parse_value_type(value_type)?, val_pos, val_text)), None)
+            (Some(parse_value_type(value_type)?), None)
         }
         Rule::type_label => {
             let labels = child
                 .into_inner()
                 .next()
                 .ok_or(CompilerError::MissingNode(pos))?;
-            let labels_pos = labels.line_col();
-            let labels_text = labels.as_str().to_string();
-            (None, Some(Spanned::new(parse_labels(labels)?, labels_pos, labels_text)))
+            (None, Some(parse_labels(labels)?))
         }
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
 
-    Ok(ast::Type { value, label })
+    Ok(Spanned::new(PartialType { value, labels: label }, pos, text))
 }
 
-fn parse_value_type(p: Pair<'_, Rule>) -> Result<ast::Value> {
+fn parse_value_type(p: Pair<'_, Rule>) -> Result<PartialValue> {
     let pos = p.line_col();
     let child = p
         .into_inner()
         .next()
         .ok_or(CompilerError::MissingNode(pos))?;
     let val = match child.as_rule() {
-        Rule::int_type => ast::Value::Int,
-        Rule::float_type => ast::Value::Float,
-        Rule::bool_type => ast::Value::Bool,
+        Rule::int_type => PartialValue::Int,
+        Rule::float_type => PartialValue::Float,
+        Rule::bool_type => PartialValue::Bool,
         Rule::fun_type => parse_fun_type(child)?,
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
@@ -520,47 +522,44 @@ fn parse_value_type(p: Pair<'_, Rule>) -> Result<ast::Value> {
     Ok(val)
 }
 
-fn parse_fun_type(p: Pair<'_, Rule>) -> Result<ast::Value> {
+fn parse_fun_type(p: Pair<'_, Rule>) -> Result<PartialValue> {
     let pos = p.line_col();
+    let text = p.as_str().to_string();
     let mut children = p.into_inner();
     let value_type = children.next().ok_or(CompilerError::MissingNode(pos))?;
-    let val_pos = value_type.line_col();
-    let val_text =value_type.as_str().to_string();
     let value = parse_value_type(value_type)?;
     let next = children.next().ok_or(CompilerError::MissingNode(pos))?;
     match next.as_rule() {
         Rule::labels => {
-            let label_pos = next.line_col();
-            let label_text = next.as_str().to_string();
             let label = parse_labels(next)?;
-            let param = Box::new(ast::Type {
-                value: Some(Spanned::new(value, val_pos, val_text)),
-                label: Some(Spanned::new(label, label_pos, label_text)),
+            let param = Box::new(PartialType {
+                value: Some(value),
+                labels: Some(label),
             });
             let t = children.next().ok_or(CompilerError::MissingNode(pos))?;
             let ty = parse_type(t)?;
 
-            Ok(ast::Value::Function {
+            Ok(PartialValue::Function {
                 param,
-                return_type: Box::new(ty),
+                return_type: Box::new(ty.node),
             })
         }
         Rule::r#type => {
-            let param = Box::new(ast::Type {
-                value: Some(Spanned::new(value, val_pos, val_text)),
-                label: None,
+            let param = Box::new(PartialType {
+                value: Some(value),
+                labels: None,
             });
             let ty = parse_type(next)?;
-            Ok(ast::Value::Function {
+            Ok(PartialValue::Function {
                 param,
-                return_type: Box::new(ty),
+                return_type: Box::new(ty.node),
             })
         }
         r => Err(CompilerError::InvalidNode(r, pos)),
     }
 }
 
-fn parse_labels(p: Pair<'_, Rule>) -> Result<Vec<String>> {
+fn parse_labels(p: Pair<'_, Rule>) -> Result<Labels> {
     let pos = p.line_col();
     let mut labels = Vec::new();
 
@@ -570,14 +569,14 @@ fn parse_labels(p: Pair<'_, Rule>) -> Result<Vec<String>> {
         }
 
         labels.push(
-            label
+            label::intern_label(label
                 .into_inner()
                 .next()
                 .ok_or(CompilerError::MissingNode(pos))?
                 .as_str()
-                .to_string(),
+            )
         );
     }
 
-    Ok(labels)
+    Ok(Labels::new(labels))
 }

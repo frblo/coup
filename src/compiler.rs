@@ -1,6 +1,4 @@
-pub mod ast;
-mod ast;
-mod typed_ast;
+mod types;
 
 pub mod error;
 pub mod parser;

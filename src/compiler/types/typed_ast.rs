@@ -1,3 +1,5 @@
+use super::Type;
+
 #[derive(Debug)]
 pub struct TypedProgram(pub Vec<TypedStmt>);
 
@@ -76,20 +78,3 @@ pub enum Literal {
     Unit,
 }
 
-#[derive(Debug)]
-pub struct Type {
-    pub value: Value,
-    pub label: Vec<String>,
-}
-
-#[derive(Debug)]
-pub enum Value {
-    Int,
-    Bool,
-    Float,
-    Unit,
-    Function {
-        param: Box<Type>,
-        return_type: Box<Type>,
-    },
-}
