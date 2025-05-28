@@ -9,20 +9,32 @@ use pest_derive::Parser;
 use super::error::CompilerError;
 use super::error::Result;
 
-use super::types::ast;
 use super::types::PartialValue;
-use super::types::spanned::Spanned;
 use super::types::PartialType;
-use super::types::label;
-use super::types::label::Labels;
+
+use super::types::label::{Labels, LabelInterner};
+
+use super::types::Span;
+use super::types::Literal;
+
+use super::types::raw_ast::{
+    RawProgram,
+    RawStmt,
+    RawStmtKind,
+    RawExpr,
+    RawExprKind,
+    RawBoolExpr,
+    RawArithmeticExpr,
+    RawFunctionExpr,
+};
 
 #[derive(Parser)]
 #[grammar = "compiler/parser/grammar.pest"]
 pub struct CoupParser;
 
-pub fn parse_program(source: &str) -> Result<ast::Program> {
+pub fn parse_program(source: &str) -> Result<RawProgram> {
     if source.is_empty() {
-        return Ok(ast::Program(Vec::new()));
+        return Ok(RawProgram::new(Vec::new()));
     }
 
     let mut parsed = CoupParser::parse(Rule::program, source)?;
@@ -37,20 +49,20 @@ pub fn parse_program(source: &str) -> Result<ast::Program> {
         let pos = pair.line_col();
         let text = pair.as_str().to_string();
 
-        statements.push(Spanned::new(parse_statement(pair)?, pos, text));
+        statements.push(RawStmt::new(parse_statement(pair)?, (), Span::new(pos, text)));
     }
 
-    Ok(ast::Program(statements))
+    Ok(RawProgram::new(statements))
 }
 
-fn parse_statement(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
+fn parse_statement(p: Pair<'_, Rule>) -> Result<RawStmtKind> {
     let pos = p.line_col();
     let child = p
         .into_inner()
         .next()
         .ok_or(CompilerError::MissingNode(pos))?;
     let stmt = match child.as_rule() {
-        Rule::skip_stm => ast::Stmt::Skip,
+        Rule::skip_stm => RawStmtKind::Skip,
         Rule::let_stm => parse_let(child)?,
         Rule::if_stm => parse_if(child)?,
         Rule::while_stm => parse_while(child)?,
@@ -62,7 +74,7 @@ fn parse_statement(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
     Ok(stmt)
 }
 
-fn parse_let(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
+fn parse_let(p: Pair<'_, Rule>) -> Result<RawStmtKind> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let var_decl = children.next().ok_or(CompilerError::MissingNode(pos))?;
@@ -70,17 +82,17 @@ fn parse_let(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
     let expr = children.next().ok_or(CompilerError::MissingNode(pos))?;
     let value = parse_expr(expr)?;
 
-    Ok(ast::Stmt::Let { var, ty, value })
+    Ok(RawStmtKind::Let { var, ty, value })
 }
 
-fn parse_if(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
+fn parse_if(p: Pair<'_, Rule>) -> Result<RawStmtKind> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let condition = parse_expr(children.next().ok_or(CompilerError::MissingNode(pos))?)?;
     let then_p = children.next().ok_or(CompilerError::MissingNode(pos))?;
     let line_col = then_p.line_col();
     let text = then_p.as_str().to_string();
-    let then_branch = Spanned::new(parse_blk(then_p)?, line_col, text);
+    let then_branch = RawExpr::new(parse_blk(then_p)?, (), Span::new(line_col, text));
 
     let mut else_if_branches = Vec::new();
     let mut else_branch = None;
@@ -92,20 +104,20 @@ fn parse_if(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
                 let then_p = children.next().ok_or(CompilerError::MissingNode(pos))?;
                 let line_col = then_p.line_col();
                 let text = then_p.as_str().to_string();
-                let then = Spanned::new(parse_blk(then_p)?, line_col, text);
+                let then = RawExpr::new(parse_blk(then_p)?, (), Span::new(line_col, text));
                 else_if_branches.push((cond, then));
             },
             // Else branch
             Rule::blk_expr => {
                 let line_col = next.line_col();
                 let text = next.as_str().to_string();
-                else_branch = Some(Spanned::new(parse_blk(next)?, line_col, text));
+                else_branch = Some(RawExpr::new(parse_blk(next)?, (), Span::new(line_col, text)));
             },
             r => return Err(CompilerError::InvalidNode(r, pos)),
         }
     }
 
-    Ok(ast::Stmt::If {
+    Ok(RawStmtKind::If {
         condition,
         then_branch,
         else_if_branches,
@@ -113,37 +125,37 @@ fn parse_if(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
     })
 }
 
-fn parse_while(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
+fn parse_while(p: Pair<'_, Rule>) -> Result<RawStmtKind> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let condition = parse_expr(children.next().ok_or(CompilerError::MissingNode(pos))?)?;
     let body_p = children.next().ok_or(CompilerError::MissingNode(pos))?;
     let line_col = body_p.line_col();
     let text = body_p.as_str().to_string();
-    let body = Spanned::new(parse_blk(body_p)?, line_col, text);
+    let body = RawExpr::new(parse_blk(body_p)?, (), Span::new(line_col, text));
 
-    Ok(ast::Stmt::While { condition, body })
+    Ok(RawStmtKind::While { condition, body })
 }
 
-fn parse_expr_stmt(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
+fn parse_expr_stmt(p: Pair<'_, Rule>) -> Result<RawStmtKind> {
     let pos = p.line_col();
     let child = p
         .into_inner()
         .next()
         .ok_or(CompilerError::MissingNode(pos))?;
-    Ok(ast::Stmt::Expr(parse_expr(child)?))
+    Ok(RawStmtKind::Expr(parse_expr(child)?))
 }
 
-fn parse_return(p: Pair<'_, Rule>) -> Result<ast::Stmt> {
+fn parse_return(p: Pair<'_, Rule>) -> Result<RawStmtKind> {
     let pos = p.line_col();
     let child = p
         .into_inner()
         .next()
         .ok_or(CompilerError::MissingNode(pos))?;
-    Ok(ast::Stmt::Return(parse_expr(child)?))
+    Ok(RawStmtKind::Return(parse_expr(child)?))
 }
 
-fn parse_expr(p: Pair<'_, Rule>) -> Result<Spanned<ast::Expr>> {
+fn parse_expr(p: Pair<'_, Rule>) -> Result<RawExpr> {
     let pos = p.line_col();
     let text = p.as_str().to_string();
     let child = p
@@ -160,10 +172,10 @@ fn parse_expr(p: Pair<'_, Rule>) -> Result<Spanned<ast::Expr>> {
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
 
-    Ok(Spanned::new(expr, pos, text))
+    Ok(RawExpr::new(expr, (), Span::new(pos, text)))
 }
 
-fn parse_bool(p: Pair<'_, Rule>) -> Result<ast::Expr> {
+fn parse_bool(p: Pair<'_, Rule>) -> Result<RawExprKind> {
     let pos = p.line_col();
     let child = p
         .into_inner()
@@ -172,38 +184,31 @@ fn parse_bool(p: Pair<'_, Rule>) -> Result<ast::Expr> {
     let expr = match child.as_rule() {
         Rule::and_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::And(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::And(l, r)
         }
         Rule::or_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::Or(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::Or(l, r)
         }
         Rule::eq_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::Eq(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::Eq(l, r)
         }
         Rule::le_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::Le(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::Le(l, r)
         }
         Rule::leq_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::Leq(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::Leq(l, r)
         }
         Rule::ge_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::Ge(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::Ge(l, r)
         }
         Rule::geq_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let b_expr = ast::BoolExpr::Geq(l, r);
-            ast::Expr::Bool(Box::new(b_expr))
+            RawBoolExpr::Geq(l, r)
         }
         Rule::neg_expr => {
             let expr = parse_expr(
@@ -212,14 +217,14 @@ fn parse_bool(p: Pair<'_, Rule>) -> Result<ast::Expr> {
                     .next()
                     .ok_or(CompilerError::MissingNode(pos))?,
             )?;
-            ast::Expr::Bool(Box::new(ast::BoolExpr::Neg(expr)))
+            RawBoolExpr::Neg(expr)
         }
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
-    Ok(expr)
+    Ok(RawExprKind::Bool(Box::new(expr)))
 }
 
-fn parse_arithmetic(p: Pair<'_, Rule>) -> Result<ast::Expr> {
+fn parse_arithmetic(p: Pair<'_, Rule>) -> Result<RawExprKind> {
     let pos = p.line_col();
     let child = p
         .into_inner()
@@ -228,35 +233,30 @@ fn parse_arithmetic(p: Pair<'_, Rule>) -> Result<ast::Expr> {
     let expr = match child.as_rule() {
         Rule::add_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let a_expr = ast::ArithmeticExpr::Add(l, r);
-            ast::Expr::Arithmetic(Box::new(a_expr))
+            RawArithmeticExpr::Add(l, r)
         }
         Rule::sub_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let a_expr = ast::ArithmeticExpr::Sub(l, r);
-            ast::Expr::Arithmetic(Box::new(a_expr))
+            RawArithmeticExpr::Sub(l, r)
         }
         Rule::mul_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let a_expr = ast::ArithmeticExpr::Mul(l, r);
-            ast::Expr::Arithmetic(Box::new(a_expr))
+            RawArithmeticExpr::Mul(l, r)
         }
         Rule::div_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let a_expr = ast::ArithmeticExpr::Div(l, r);
-            ast::Expr::Arithmetic(Box::new(a_expr))
+            RawArithmeticExpr::Div(l, r)
         }
         Rule::mod_expr => {
             let (l, r) = bin_op_helper(child)?;
-            let a_expr = ast::ArithmeticExpr::Mod(l, r);
-            ast::Expr::Arithmetic(Box::new(a_expr))
+            RawArithmeticExpr::Mod(l, r)
         }
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
-    Ok(expr)
+    Ok(RawExprKind::Arithmetic(Box::new(expr)))
 }
 
-fn parse_function(p: Pair<'_, Rule>) -> Result<ast::Expr> {
+fn parse_function(p: Pair<'_, Rule>) -> Result<RawExprKind> {
     let pos = p.line_col();
     let child = p
         .into_inner()
@@ -268,10 +268,10 @@ fn parse_function(p: Pair<'_, Rule>) -> Result<ast::Expr> {
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
 
-    Ok(ast::Expr::Function(Box::new(expr)))
+    Ok(RawExprKind::Function(Box::new(expr)))
 }
 
-fn parse_lambda(p: Pair<'_, Rule>) -> Result<ast::FunctionExpr> {
+fn parse_lambda(p: Pair<'_, Rule>) -> Result<RawFunctionExpr> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let var_declrations = children.next().ok_or(CompilerError::MissingNode(pos))?;
@@ -295,7 +295,7 @@ fn lambda_helper(
     mut vars: Pairs<'_, Rule>,
     ty_p: Option<Pair<'_, Rule>>,
     expr_p: Pair<'_, Rule>,
-) -> Result<ast::FunctionExpr> {
+) -> Result<RawFunctionExpr> {
     let var_declration = vars.next().ok_or(CompilerError::MissingNode(pos))?;
     let line_col = var_declration.line_col();
     let text = var_declration.as_str().to_string();
@@ -304,11 +304,11 @@ fn lambda_helper(
     if vars.peek().is_none() {
         let ret_ty = match ty_p {
             Some(p) => parse_type(p)?,
-            None => Spanned::new(PartialType::empty(), line_col, "".to_string()),
+            None => PartialType::empty(),
         };
         let expr = parse_expr(expr_p)?;
 
-        Ok(ast::FunctionExpr::Lambda {
+        Ok(RawFunctionExpr::Lambda {
             var,
             var_ty,
             ret_ty,
@@ -317,18 +317,18 @@ fn lambda_helper(
     } else {
         let f_expr = lambda_helper(pos, vars, ty_p, expr_p)?;
         let ret_ty = match &f_expr {
-            ast::FunctionExpr::Lambda { var: _, var_ty, ret_ty, expr: _ } => {
+            RawFunctionExpr::Lambda { var: _, var_ty, ret_ty, expr: _ } => {
                 let p_t = PartialType {
-                    value: Some(PartialValue::Function { param: Box::new(var_ty.node.clone()), return_type: Box::new(ret_ty.node.clone()) }),
+                    value: Some(PartialValue::Function { param: Box::new(var_ty.clone()), return_type: Box::new(ret_ty.clone()) }),
                     labels: None,
                 };
-                Spanned::new(p_t, line_col, "".to_string())
+                p_t
             },
             _ => unreachable!("fn lambdahelper produces apply statement"),
         };
-        let expr = Spanned::new(ast::Expr::Function(Box::new(f_expr)), line_col, text);
+        let expr = RawExpr::new(RawExprKind::Function(Box::new(f_expr)), (), Span::new(line_col, text));
 
-        Ok(ast::FunctionExpr::Lambda {
+        Ok(RawFunctionExpr::Lambda {
             var,
             var_ty,
             ret_ty,
@@ -337,7 +337,7 @@ fn lambda_helper(
     }
 }
 
-fn parse_apply(p: Pair<'_, Rule>) -> Result<ast::FunctionExpr> {
+fn parse_apply(p: Pair<'_, Rule>) -> Result<RawFunctionExpr> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let var = children.next().ok_or(CompilerError::MissingNode(pos))?;
@@ -349,7 +349,7 @@ fn apply_helper(
     pos: (usize, usize),
     mut exprs: Peekable<Rev<Pairs<'_, Rule>>>,
     var: Pair<'_, Rule>,
-) -> Result<ast::FunctionExpr> {
+) -> Result<RawFunctionExpr> {
     let expr_p = exprs.next().ok_or(CompilerError::MissingNode(pos))?;
     let line_col = expr_p.line_col();
     let text = expr_p.as_str().to_string();
@@ -357,85 +357,64 @@ fn apply_helper(
     if exprs.peek().is_none() {
         let line_col = var.line_col();
         let text = var.as_str().to_string();
-        let fun = Spanned::new(parse_var(var)?, line_col, text);
-        Ok(ast::FunctionExpr::Apply { fun, arg })
+        let fun = RawExpr::new(parse_var(var)?, (), Span::new(line_col, text));
+        Ok(RawFunctionExpr::Apply { fun, arg })
     } else {
-        let fun = Spanned::new(ast::Expr::Function(Box::new(apply_helper(pos, exprs, var)?)), line_col, text);
-        Ok(ast::FunctionExpr::Apply { fun, arg })
+        let fun = RawExpr::new(RawExprKind::Function(Box::new(apply_helper(pos, exprs, var)?)), (), Span::new(line_col, text));
+        Ok(RawFunctionExpr::Apply { fun, arg })
     }
 }
 
-fn parse_blk(p: Pair<'_, Rule>) -> Result<ast::Expr> {
+fn parse_blk(p: Pair<'_, Rule>) -> Result<RawExprKind> {
     let mut statements = Vec::new();
     for stmt in p.into_inner() {
         let pos = stmt.line_col();
         let text = stmt.as_str().to_string();
-        statements.push(Spanned::new(parse_statement(stmt)?, pos, text));
+        statements.push(RawStmt::new(parse_statement(stmt)?, (), Span::new(pos, text)));
     }
 
-    Ok(ast::Expr::Block(statements))
+    Ok(RawExprKind::Block(statements))
 }
 
-fn parse_literal(p: Pair<'_, Rule>) -> Result<ast::Expr> {
+fn parse_literal(p: Pair<'_, Rule>) -> Result<RawExprKind> {
     let pos = p.line_col();
-    let text = p.as_str().to_string();
     let mut children = p.into_inner();
     let literal_part = children.next().ok_or(CompilerError::MissingNode(pos))?;
     let literal = literal_helper(literal_part)?;
 
-    let value = match literal {
-        ast::Literal::Int(_) => PartialValue::Int,
-        ast::Literal::Float(_) => PartialValue::Float,
-        ast::Literal::Bool(_) => PartialValue::Bool,
-        ast::Literal::Unit => PartialValue::Unit,
-    };
-
-    let ty = if let Some(labels_p) = children.next() {
-        let label = parse_labels(labels_p)?;
-        Spanned::new(PartialType {
-            value: Some(value),
-            labels: Some(label),
-        }, pos, text)
-    } else {
-        Spanned::new(PartialType {
-            value: Some(value),
-            labels: None,
-        }, pos, text)
-    };
-
-    Ok(ast::Expr::Literal(literal, ty))
+    Ok(RawExprKind::Literal(literal))
 }
 
-fn literal_helper(p: Pair<'_, Rule>) -> Result<ast::Literal> {
+fn literal_helper(p: Pair<'_, Rule>) -> Result<Literal> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let lit = children.next().ok_or(CompilerError::MissingNode(pos))?;
     match lit.as_rule() {
-        Rule::int_lit => Ok(ast::Literal::Int(lit.as_str().parse::<i64>()?)),
-        Rule::float_lit => Ok(ast::Literal::Float(lit.as_str().parse::<f64>()?)),
-        Rule::bool_lit => Ok(ast::Literal::Bool(lit.as_str().parse::<bool>()?)),
-        Rule::unit_lit => Ok(ast::Literal::Unit),
+        Rule::int_lit => Ok(Literal::Int(lit.as_str().parse::<i64>()?)),
+        Rule::float_lit => Ok(Literal::Float(lit.as_str().parse::<f64>()?)),
+        Rule::bool_lit => Ok(Literal::Bool(lit.as_str().parse::<bool>()?)),
+        Rule::unit_lit => Ok(Literal::Unit),
         r => Err(CompilerError::InvalidNode(r, pos)),
     }
 }
 
-fn parse_var(p: Pair<'_, Rule>) -> Result<ast::Expr> {
+fn parse_var(p: Pair<'_, Rule>) -> Result<RawExprKind> {
     let pos = p.line_col();
     match p.as_rule() {
-        Rule::var => Ok(ast::Expr::Var(p.as_str().to_string())),
+        Rule::var => Ok(RawExprKind::Var(p.as_str().to_string())),
         r => Err(CompilerError::InvalidNode(r, pos)),
     }
 }
 
-fn bin_op_helper(p: Pair<'_, Rule>) -> Result<(Spanned<ast::Expr>, Spanned<ast::Expr>)> {
+fn bin_op_helper(p: Pair<'_, Rule>) -> Result<(RawExpr, RawExpr)> {
     let pos = p.line_col();
     let mut components = p.into_inner();
     let first = components.next().ok_or(CompilerError::MissingNode(pos))?;
     let line_col = first.line_col();
     let text = first.as_str().to_string();
     let left = match first.as_rule() {
-        Rule::literal => Spanned::new(parse_literal(first)?, line_col, text),
-        Rule::var => Spanned::new(ast::Expr::Var(first.as_str().to_string()), line_col, text),
+        Rule::literal => RawExpr::new(parse_literal(first)?, (), Span::new(line_col, text)),
+        Rule::var => RawExpr::new(RawExprKind::Var(first.as_str().to_string()), (), Span::new(line_col, text)),
         Rule::expr => parse_expr(first)?,
         r => return Err(CompilerError::InvalidNode(r, line_col)),
     };
@@ -445,7 +424,7 @@ fn bin_op_helper(p: Pair<'_, Rule>) -> Result<(Spanned<ast::Expr>, Spanned<ast::
     Ok((left, right))
 }
 
-fn parse_var_declration(p: Pair<'_, Rule>) -> Result<(String, Spanned<PartialType>)> {
+fn parse_var_declration(p: Pair<'_, Rule>) -> Result<(String, PartialType)> {
     let pos = p.line_col();
     let mut children = p.into_inner();
     let var = children
@@ -461,13 +440,13 @@ fn parse_var_declration(p: Pair<'_, Rule>) -> Result<(String, Spanned<PartialTyp
             .ok_or(CompilerError::MissingNode(pos))?;
         parse_type(t)?
     } else {
-        Spanned::new(PartialType::empty(), pos, "".to_string())
+        PartialType::empty()
     };
 
     Ok((var, ty))
 }
 
-fn parse_type(p: Pair<'_, Rule>) -> Result<Spanned<PartialType>> {
+fn parse_type(p: Pair<'_, Rule>) -> Result<PartialType> {
     let pos = p.line_col();
     let text = p.as_str().to_string();
     let child = p
@@ -502,7 +481,7 @@ fn parse_type(p: Pair<'_, Rule>) -> Result<Spanned<PartialType>> {
         r => return Err(CompilerError::InvalidNode(r, pos)),
     };
 
-    Ok(Spanned::new(PartialType { value, labels: label }, pos, text))
+    Ok(PartialType { value, labels: label })
 }
 
 fn parse_value_type(p: Pair<'_, Rule>) -> Result<PartialValue> {
@@ -541,7 +520,7 @@ fn parse_fun_type(p: Pair<'_, Rule>) -> Result<PartialValue> {
 
             Ok(PartialValue::Function {
                 param,
-                return_type: Box::new(ty.node),
+                return_type: Box::new(ty),
             })
         }
         Rule::r#type => {
@@ -552,7 +531,7 @@ fn parse_fun_type(p: Pair<'_, Rule>) -> Result<PartialValue> {
             let ty = parse_type(next)?;
             Ok(PartialValue::Function {
                 param,
-                return_type: Box::new(ty.node),
+                return_type: Box::new(ty),
             })
         }
         r => Err(CompilerError::InvalidNode(r, pos)),
@@ -569,7 +548,7 @@ fn parse_labels(p: Pair<'_, Rule>) -> Result<Labels> {
         }
 
         labels.push(
-            label::intern_label(label
+            LabelInterner::intern_label(label
                 .into_inner()
                 .next()
                 .ok_or(CompilerError::MissingNode(pos))?

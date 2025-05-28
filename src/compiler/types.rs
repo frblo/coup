@@ -1,19 +1,83 @@
-pub mod spanned;
-pub mod value;
-pub mod ast;
-pub mod typed_ast;
+mod value;
+mod ast;
 pub mod label;
 
 use label::Labels;
 use value::Value;
 
+pub mod raw_ast {
+    use super::ast;
+    pub type RawProgram = ast::ProgramWith<(), ast::Span>;
+
+    pub type RawStmt = ast::StmtWith<(), ast::Span>;
+    pub type RawStmtKind = ast::StmtKind<(), ast::Span>;
+
+    pub type RawExpr = ast::ExprWith<(), ast::Span>;
+    pub type RawExprKind = ast::ExprKind<(), ast::Span>;
+    pub type RawBoolExpr = ast::BoolExprWith<(), ast::Span>;
+    pub type RawArithmeticExpr = ast::ArithmeticExprWith<(), ast::Span>;
+    pub type RawFunctionExpr = ast::FunctionExprWith<(), ast::Span>;
+}
+
+pub mod inferred_ast {
+    use super::{ast, PartialType};
+    pub type InferredProgram = ast::ProgramWith<PartialType, ast::Span>;
+
+    pub type InferredStmt = ast::StmtWith<PartialType, ast::Span>;
+    pub type InferredStmtKind = ast::StmtKind<PartialType, ast::Span>;
+
+    pub type InferredExpr = ast::ExprWith<PartialType, ast::Span>;
+    pub type InferredExprKind = ast::ExprKind<PartialType, ast::Span>;
+    pub type InferredBoolExpr = ast::BoolExprWith<PartialType, ast::Span>;
+    pub type InferredArithmeticExpr = ast::ArithmeticExprWith<PartialType, ast::Span>;
+    pub type InferredFunctionExpr = ast::FunctionExprWith<PartialType, ast::Span>;
+}
+
+pub mod typed_ast {
+    use super::{ast, Type};
+    pub type TypedProgram = ast::ProgramWith<Type, ()>;
+
+    pub type TypedStmt = ast::StmtWith<Type, ()>;
+    pub type TypedStmtKind = ast::StmtKind<Type, ()>;
+
+    pub type TypedExpr = ast::ExprWith<Type, ()>;
+    pub type TypedExprKind = ast::ExprKind<Type, ()>;
+    pub type TypedBoolExpr = ast::BoolExprWith<Type, ()>;
+    pub type TypedArithmeticExpr = ast::ArithmeticExprWith<Type, ()>;
+    pub type TypedFunctionExpr = ast::FunctionExprWith<Type, ()>;
+}
+
+pub type Literal = ast::Literal;
+pub type Span = ast::Span;
+
 pub type PartialValue = Value<PartialType>;
+impl PartialValue {
+    pub fn to_concrete(self) -> Option<ConcreteValue> {
+        self.map(PartialType::to_full)
+    }
+}
+
 pub type ConcreteValue = Value<Type>;
+impl ConcreteValue {
+    pub fn to_partial(self) -> PartialValue {
+        let wrapper = |x| Some(Type::to_partial(x));
+        self.map(wrapper).unwrap()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Type {
     pub value: ConcreteValue,
     pub labels: Labels,
+}
+
+impl Type {
+    pub fn to_partial(self) -> PartialType {
+        let value = Some(self.value.to_partial());
+        let labels = Some(self.labels);
+
+        PartialType { value, labels }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +92,13 @@ impl PartialType{
             value: None,
             labels: None,
         }
+    }
+
+    pub fn to_full(self) -> Option<Type> {
+        let value = self.value?.to_concrete()?;
+        let labels = self.labels?;
+
+        Some(Type { value, labels })
     }
 }
 
@@ -50,3 +121,4 @@ impl PartialEq for PartialType {
 }
 
 impl Eq for PartialType {}
+

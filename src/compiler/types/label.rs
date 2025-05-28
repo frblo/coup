@@ -55,20 +55,20 @@ impl LabelInterner {
     pub fn resolve(&self, sym: LabelSymbol) -> Option<String> {
         self.sym_to_string.get(sym.0).map(|s| s.to_string())
     }
+
+    pub fn intern_label(s: &str) -> LabelSymbol {
+        LABEL_INTERNER.with(|interner| {
+            interner.borrow_mut().intern(s)
+        })
+    }
+
+    pub fn resolve_label(sym: LabelSymbol) -> Option<String> {
+        LABEL_INTERNER.with(|interner| {
+            interner.borrow().resolve(sym).map(|s| s.to_string())
+        })
+    }
 }
 
 thread_local! {
     static LABEL_INTERNER: RefCell<LabelInterner> = RefCell::new(LabelInterner::new());
-}
-
-pub fn intern_label(s: &str) -> LabelSymbol {
-    LABEL_INTERNER.with(|interner| {
-        interner.borrow_mut().intern(s)
-    })
-}
-
-pub fn resolve_label(sym: LabelSymbol) -> Option<String> {
-    LABEL_INTERNER.with(|interner| {
-        interner.borrow().resolve(sym).map(|s| s.to_string())
-    })
 }
