@@ -73,7 +73,7 @@ apply_expr = { var ~ exprs }
 
 blk_expr = { "{" ~ (statement)+ ~ "}" }
 
-literal = { literal_part ~ labels? }
+literal = { literal_part }
 literal_part = { int_lit | str_lit | float_lit | bool_lit | unit_lit }
 int_lit = @{ ASCII_DIGIT+ }
 str_lit = @{ "\"" ~ ASCII_ALPHANUMERIC* ~ "\"" }
@@ -91,9 +91,8 @@ type_full = { value_type ~ labels }
 type_val = { value_type }
 type_label = { "_" ~ labels }
 
-value_type = { int_type | str_type | float_type | bool_type | fun_type }
+value_type = { int_type | float_type | bool_type | fun_type }
 int_type = @{ "int" }
-str_type = @{ "str" }
 float_type = @{ "float" }
 bool_type = @{ "bool" }
 fun_type = { "(" ~ value_type ~ labels? ~ "->" ~ type ~ ")" }
