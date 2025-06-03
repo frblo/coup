@@ -1,6 +1,6 @@
 use super::PartialType;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Span {
     pub text: String,
     pub line: usize,
@@ -9,7 +9,11 @@ pub struct Span {
 
 impl Span {
     pub fn new(line_col: (usize, usize), text: String) -> Self {
-        Self { line: line_col.0, col: line_col.1, text }
+        Self {
+            line: line_col.0,
+            col: line_col.1,
+            text,
+        }
     }
 }
 
@@ -61,7 +65,7 @@ pub enum StmtKind<T, M> {
 pub struct ExprWith<T, M> {
     pub expr: ExprKind<T, M>,
     pub ty: T,
-    pub meta: M
+    pub meta: M,
 }
 
 impl<T, M> ExprWith<T, M> {
@@ -115,11 +119,10 @@ pub enum FunctionExprWith<T, M> {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Literal {
     Int(i64),
     Bool(bool),
     Float(f64),
     Unit,
 }
-

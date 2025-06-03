@@ -1,6 +1,6 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::cell::RefCell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Labels(pub Vec<LabelSymbol>);
@@ -11,16 +11,32 @@ impl Labels {
         Self(syms)
     }
 
-    pub fn join_labels(self, other: Self) -> Option<Labels> {
+    pub fn join_labels(&self, other: &Self) -> Labels {
         let mut set: HashSet<LabelSymbol> = self.0.iter().cloned().collect();
         set.extend(other.0.iter().cloned());
         let mut joined: Vec<_> = set.into_iter().collect();
         joined.sort_unstable();
-        Some(Labels(joined))
+        Labels(joined)
     }
 
-    pub fn flows_to(&self, other: Self) -> bool {
+    pub fn flows_to(&self, other: &Self) -> bool {
         self.0.iter().all(|s| other.0.contains(s))
+    }
+}
+
+pub fn join_labels(l1: &Option<Labels>, l2: &Option<Labels>) -> Labels {
+    match (l1, l2) {
+        (Some(l1), Some(l2)) => l1.join_labels(l2),
+        (Some(l1), None) => l1.clone(),
+        (None, Some(l2)) => l2.clone(),
+        (None, None) => Labels(Vec::new()),
+    }
+}
+
+pub fn flows_to(l1: &Option<Labels>, l2: &Option<Labels>) -> Option<bool> {
+    match (l1, l2) {
+        (Some(l1), Some(l2)) => Some(l1.flows_to(l2)),
+        _ => None,
     }
 }
 
@@ -57,15 +73,11 @@ impl LabelInterner {
     }
 
     pub fn intern_label(s: &str) -> LabelSymbol {
-        LABEL_INTERNER.with(|interner| {
-            interner.borrow_mut().intern(s)
-        })
+        LABEL_INTERNER.with(|interner| interner.borrow_mut().intern(s))
     }
 
     pub fn resolve_label(sym: LabelSymbol) -> Option<String> {
-        LABEL_INTERNER.with(|interner| {
-            interner.borrow().resolve(sym).map(|s| s.to_string())
-        })
+        LABEL_INTERNER.with(|interner| interner.borrow().resolve(sym).map(|s| s.to_string()))
     }
 }
 
