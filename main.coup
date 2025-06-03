@@ -1,8 +1,9 @@
 let fun: (int -> (int -> int)) = .\ (step: int, val: int)->int=>step+val;
+let fun2 = .\ (step: int) => .\ (val: int) -> int => step + val;
 
 let i: int = 10;
 let step = 1;
-let res = 0@["a"];
+let res: _@["a"] = 0;
 let step_fun = fun(step);
 
 while i < 10 {
