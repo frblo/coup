@@ -108,16 +108,16 @@ pub mod raw_ast {
 
 pub mod inferred_ast {
     use super::{PartialType, ast};
-    pub type InferredProgram = ast::ProgramWith<PartialType, ()>;
+    pub type InferredProgram = ast::ProgramWith<PartialType, ast::Span>;
 
-    pub type InferredStmt = ast::StmtWith<PartialType, ()>;
-    pub type InferredStmtKind = ast::StmtKind<PartialType, ()>;
+    pub type InferredStmt = ast::StmtWith<PartialType, ast::Span>;
+    pub type InferredStmtKind = ast::StmtKind<PartialType, ast::Span>;
 
-    pub type InferredExpr = ast::ExprWith<PartialType, ()>;
-    pub type InferredExprKind = ast::ExprKind<PartialType, ()>;
-    pub type InferredBoolExpr = ast::BoolExprWith<PartialType, ()>;
-    pub type InferredArithmeticExpr = ast::ArithmeticExprWith<PartialType, ()>;
-    pub type InferredFunctionExpr = ast::FunctionExprWith<PartialType, ()>;
+    pub type InferredExpr = ast::ExprWith<PartialType, ast::Span>;
+    pub type InferredExprKind = ast::ExprKind<PartialType, ast::Span>;
+    pub type InferredBoolExpr = ast::BoolExprWith<PartialType, ast::Span>;
+    pub type InferredArithmeticExpr = ast::ArithmeticExprWith<PartialType, ast::Span>;
+    pub type InferredFunctionExpr = ast::FunctionExprWith<PartialType, ast::Span>;
 }
 
 pub mod typed_ast {
@@ -136,6 +136,8 @@ pub mod typed_ast {
 
 pub type Literal = ast::Literal;
 pub type Span = ast::Span;
+
+pub type ExprWith<T, M> = ast::ExprWith<T, M>;
 
 pub type PartialValue = Value<PartialType>;
 impl PartialValue {
