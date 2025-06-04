@@ -137,8 +137,6 @@ pub mod typed_ast {
 pub type Literal = ast::Literal;
 pub type Span = ast::Span;
 
-pub type ExprWith<T, M> = ast::ExprWith<T, M>;
-
 pub type PartialValue = Value<PartialType>;
 impl PartialValue {
     pub fn to_concrete(self) -> Option<ConcreteValue> {

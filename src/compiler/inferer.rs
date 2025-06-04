@@ -84,8 +84,8 @@ fn infer_stmt(stmt: &mut RawStmt, ctx: &mut Context) -> TypeResult<InferredStmt>
         RawStmtKind::Return(expr) => {
             let expr = infer_expr(expr, ctx)?;
             let ty = PartialType {
-                value: expr.1.value.clone(),
-                labels: expr.1.labels.clone(),
+                value: expr.ty.value.clone(),
+                labels: expr.ty.labels.clone(),
             };
             Ok(InferredStmt {
                 stmt: InferredStmtKind::Return(expr),
@@ -105,10 +105,10 @@ fn infer_let(
 ) -> TypeResult<InferredStmt> {
     let mut expr = infer_expr(value, ctx)?;
 
-    unify(&mut var_ty.value, &mut expr.1.value)?;
+    unify(&mut var_ty.value, &mut expr.ty.value)?;
 
     if var_ty.labels.is_none() {
-        ctx.type_env.insert(var.to_string(), expr.1.clone());
+        ctx.type_env.insert(var.to_string(), expr.ty.clone());
 
         Ok(InferredStmt {
             stmt: InferredStmtKind::Let {
@@ -122,7 +122,7 @@ fn infer_let(
             },
             meta: span.to_owned(),
         })
-    } else if flows_to(&mut expr.1.labels, &mut var_ty.labels)
+    } else if flows_to(&mut expr.ty.labels, &mut var_ty.labels)
         .ok_or(TypeError::MissingType(span.clone()))?
     {
         ctx.type_env.insert(var.to_string(), var_ty.clone());
@@ -141,7 +141,7 @@ fn infer_let(
         })
     } else {
         Err(TypeError::InvalidFlow(
-            expr.1.labels.unwrap(),
+            expr.ty.labels.unwrap(),
             var_ty.labels.clone().unwrap(),
             span.clone(),
         ))
@@ -157,12 +157,12 @@ fn infer_if(
     span: &mut Span,
 ) -> TypeResult<InferredStmt> {
     let mut condition = infer_expr(condition, ctx)?;
-    unify(&mut condition.1.value, &mut Some(PartialValue::Bool))?;
+    unify(&mut condition.ty.value, &mut Some(PartialValue::Bool))?;
 
     let old_pc = ctx.pc.clone();
     ctx.pc = ctx.pc.join_labels(
         condition
-            .1
+            .ty
             .labels
             .as_ref()
             .ok_or(TypeError::MissingType(span.clone()))?,
@@ -173,11 +173,11 @@ fn infer_if(
     let mut else_ifs = Vec::new();
     for (cond, then) in else_if_branches {
         let mut cond = infer_expr(cond, ctx)?;
-        unify(&mut cond.1.value, &mut Some(PartialValue::Bool))?;
+        unify(&mut cond.ty.value, &mut Some(PartialValue::Bool))?;
 
         let old_pc = ctx.pc.clone();
         ctx.pc = ctx.pc.join_labels(
-            cond.1
+            cond.ty
                 .labels
                 .as_ref()
                 .ok_or(TypeError::MissingType(span.clone()))?,
@@ -220,12 +220,12 @@ fn infer_while(
     span: &mut Span,
 ) -> TypeResult<InferredStmt> {
     let mut condition = infer_expr(condition, ctx)?;
-    unify(&mut condition.1.value, &mut Some(PartialValue::Bool))?;
+    unify(&mut condition.ty.value, &mut Some(PartialValue::Bool))?;
 
     let old_pc = ctx.pc.clone();
     ctx.pc = ctx.pc.join_labels(
         condition
-            .1
+            .ty
             .labels
             .as_ref()
             .ok_or(TypeError::MissingType(span.clone()))?,
@@ -246,14 +246,14 @@ fn infer_while(
 }
 
 fn infer_expr(expr: &mut RawExpr, ctx: &mut Context) -> TypeResult<InferredExpr> {
-    let span = &mut expr.2;
-    match &mut expr.0 {
+    let span = &mut expr.meta;
+    match &mut expr.expr {
         RawExprKind::Bool(b) => infer_bool(b, ctx, span),
         RawExprKind::Arithmetic(a) => infer_arithmetic(a, ctx, span),
         RawExprKind::Function(f) => infer_function(f, ctx, span),
-        RawExprKind::Block(b) => infer_block(b, ctx),
+        RawExprKind::Block(b) => infer_block(b, ctx, span),
         RawExprKind::Var(v) => infer_var(v, ctx, span),
-        RawExprKind::Literal(l) => infer_literal(l),
+        RawExprKind::Literal(l) => infer_literal(l, span),
     }
 }
 
@@ -340,23 +340,23 @@ fn infer_bool(
         RawBoolExpr::Neg(lhs) => {
             let mut lhs = infer_expr(lhs, ctx)?;
 
-            if unify(&mut lhs.1.value, &mut Some(PartialValue::Bool)).is_err() {
+            if unify(&mut lhs.ty.value, &mut Some(PartialValue::Bool)).is_err() {
                 return Err(TypeError::ExpectedBoolean(
-                    lhs.1.value.unwrap(),
+                    lhs.ty.value.unwrap(),
                     span.clone(),
                 ));
             }
 
             let ty = PartialType {
                 value: Some(
-                    lhs.1
+                    lhs.ty
                         .value
                         .as_ref()
                         .ok_or(TypeError::MissingType(span.clone()))?
                         .clone(),
                 ),
                 labels: Some(
-                    lhs.1
+                    lhs.ty
                         .labels
                         .as_ref()
                         .ok_or(TypeError::MissingType(span.clone()))?
@@ -465,19 +465,19 @@ fn arithmetic_boolean_helper(
 
     if expected
         .into_iter()
-        .all(|expect| unify(&mut lhs.1.value, &mut Some(expect)).is_err())
+        .all(|expect| unify(&mut lhs.ty.value, &mut Some(expect)).is_err())
     {
         return Err(TypeError::ExpectedNumeric(
-            lhs.1.value.unwrap(),
+            lhs.ty.value.unwrap(),
             span.clone(),
         ));
     }
 
-    unify(&mut lhs.1.value, &mut rhs.1.value)?;
+    unify(&mut lhs.ty.value, &mut rhs.ty.value)?;
 
     let ty = PartialType {
         value: Some(PartialValue::Bool),
-        labels: Some(join_labels(&lhs.1.labels, &mut rhs.1.labels)),
+        labels: Some(join_labels(&lhs.ty.labels, &mut rhs.ty.labels)),
     };
 
     Ok((lhs, rhs, ty))
@@ -496,22 +496,22 @@ fn bin_op_helper(
     let exp = expected[0].clone();
     if expected
         .into_iter()
-        .all(|expect| unify(&mut lhs.1.value, &mut Some(expect)).is_err())
+        .all(|expect| unify(&mut lhs.ty.value, &mut Some(expect)).is_err())
     {
-        return Err(TypeError::Missmatch(lhs.1.value.unwrap(), exp));
+        return Err(TypeError::Missmatch(lhs.ty.value.unwrap(), exp));
     }
 
-    unify(&mut lhs.1.value, &mut rhs.1.value)?;
+    unify(&mut lhs.ty.value, &mut rhs.ty.value)?;
 
     let ty = PartialType {
         value: Some(
-            lhs.1
+            lhs.ty
                 .value
                 .as_ref()
                 .ok_or(TypeError::MissingType(span.clone()))?
                 .clone(),
         ),
-        labels: Some(join_labels(&mut lhs.1.labels, &rhs.1.labels)),
+        labels: Some(join_labels(&mut lhs.ty.labels, &rhs.ty.labels)),
     };
 
     Ok((lhs, rhs, ty))
@@ -547,19 +547,19 @@ fn infer_lambda(
     ctx.type_env.insert(var.clone(), var_ty.clone());
 
     let mut body = infer_expr(expr, ctx)?;
-    unify(&mut ret_ty.value, &mut body.1.value)?;
-    let labels = join_labels(&ret_ty.labels, &body.1.labels);
+    unify(&mut ret_ty.value, &mut body.ty.value)?;
+    let labels = join_labels(&ret_ty.labels, &body.ty.labels);
 
     let fun_type = PartialValue::Function {
         param: Box::new(var_ty.clone()),
-        return_type: Box::new(body.1.clone()),
+        return_type: Box::new(body.ty.clone()),
     };
 
     Ok(InferredExpr {
         expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Lambda {
             var: var.clone(),
             var_ty: var_ty.clone(),
-            ret_ty: body.1.clone(),
+            ret_ty: body.ty.clone(),
             expr: body,
         })),
         ty: PartialType {
@@ -583,20 +583,20 @@ fn infer_apply(
         mut param,
         return_type,
     } = fun
-        .1
+        .ty
         .value
         .clone()
         .ok_or(TypeError::MissingType(span.clone()))?
     else {
         return Err(TypeError::ExpectedFunction(
-            fun.1.value.unwrap(),
+            fun.ty.value.unwrap(),
             span.clone(),
         ));
     };
 
-    unify(&mut arg.1.value, &mut param.value)?;
+    unify(&mut arg.ty.value, &mut param.value)?;
 
-    let labels = join_labels(&fun.1.labels, &arg.1.labels);
+    let labels = join_labels(&fun.ty.labels, &arg.ty.labels);
 
     Ok(InferredExpr {
         expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Apply { fun, arg })),
@@ -608,7 +608,11 @@ fn infer_apply(
     })
 }
 
-fn infer_block(stmts: &mut Vec<RawStmt>, ctx: &mut Context) -> TypeResult<InferredExpr> {
+fn infer_block(
+    stmts: &mut Vec<RawStmt>,
+    ctx: &mut Context,
+    span: &mut Span,
+) -> TypeResult<InferredExpr> {
     let mut inferred_stmts = Vec::new();
     for stmt in stmts {
         inferred_stmts.push(infer_stmt(stmt, ctx)?);
@@ -647,7 +651,7 @@ fn infer_var(var: &mut str, ctx: &mut Context, span: &mut Span) -> TypeResult<In
     }
 }
 
-fn infer_literal(lit: &mut Literal) -> TypeResult<InferredExpr> {
+fn infer_literal(lit: &mut Literal, span: &mut Span) -> TypeResult<InferredExpr> {
     let value = match lit {
         Literal::Int(_) => Some(PartialValue::Int),
         Literal::Float(_) => Some(PartialValue::Float),
