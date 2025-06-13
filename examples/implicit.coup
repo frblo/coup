@@ -1,0 +1,5 @@
+// Example program showcasing implicit typing
+
+let a: int = 10;
+let b: _@["x"] = 0;
+let c = a + b;
