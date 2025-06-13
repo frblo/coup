@@ -1,6 +1,8 @@
 mod compiler;
+mod interpreter;
 
-use compiler::{inferer::infer_program, parser::parse_program};
+use compiler::{inferer::infer_program, parser::parse_program, typer::type_program};
+use interpreter::interpret_program;
 use std::io::{Read, stdin};
 
 fn main() {
@@ -20,6 +22,17 @@ fn main() {
                 Ok(i_ast) => {
                     for stmt in &i_ast.0 {
                         println!("{:#?}", stmt);
+                    }
+                    // println!("\nType Result");
+                    match type_program(i_ast) {
+                        Err(err) => eprintln!("{:#}", err),
+                        Ok(fin_ast) => {
+                            // for stmt in &fin_ast.0 {
+                            //     println!("{:#?}", stmt);
+                            // }
+
+                            interpret_program(fin_ast);
+                        }
                     }
                 }
             }
