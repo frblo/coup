@@ -44,7 +44,7 @@ pub enum TypeError {
     #[error("Can't coherce types\n{0:#?}\n\nand\n\n{1:#?}")]
     Missmatch(PartialValue, PartialValue),
 
-    #[error("Variable with labels {0:?} doesn't flow to {0:?}\nSpan: {2:#?}")]
+    #[error("Variable with labels {0:?} doesn't flow to {1:?}\nSpan: {2:#?}")]
     InvalidFlow(Labels, Labels, Span),
 
     #[error("Expected a numeric value but got {0:?}\nSpan: {1:#?}")]

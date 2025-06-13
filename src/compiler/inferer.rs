@@ -51,7 +51,7 @@ fn infer_stmt(stmt: &mut RawStmt, ctx: &mut Context) -> TypeResult<InferredStmt>
             stmt: InferredStmtKind::Skip,
             ty: PartialType {
                 value: Some(PartialValue::Unit),
-                labels: None,
+                labels: Some(Labels::empty()),
             },
             meta: span.to_owned(),
         }),
@@ -76,7 +76,7 @@ fn infer_stmt(stmt: &mut RawStmt, ctx: &mut Context) -> TypeResult<InferredStmt>
                 stmt: InferredStmtKind::Expr(expr),
                 ty: PartialType {
                     value: Some(PartialValue::Unit),
-                    labels: None,
+                    labels: Some(Labels::empty()),
                 },
                 meta: span.to_owned(),
             })
@@ -118,7 +118,7 @@ fn infer_let(
             },
             ty: PartialType {
                 value: Some(PartialValue::Unit),
-                labels: None,
+                labels: Some(Labels::empty()),
             },
             meta: span.to_owned(),
         })
@@ -135,7 +135,7 @@ fn infer_let(
             },
             ty: PartialType {
                 value: Some(PartialValue::Unit),
-                labels: None,
+                labels: Some(Labels::empty()),
             },
             meta: span.to_owned(),
         })
@@ -207,7 +207,7 @@ fn infer_if(
         },
         ty: PartialType {
             value: Some(PartialValue::Unit),
-            labels: None,
+            labels: Some(Labels::empty()),
         },
         meta: span.to_owned(),
     })
@@ -239,7 +239,7 @@ fn infer_while(
         stmt: InferredStmtKind::While { condition, body },
         ty: PartialType {
             value: Some(PartialValue::Unit),
-            labels: None,
+            labels: Some(Labels::empty()),
         },
         meta: span.to_owned(),
     })
@@ -295,7 +295,7 @@ fn infer_bool(
             let (lhs, rhs, ty) = bin_op_helper(
                 lhs,
                 rhs,
-                vec![PartialValue::Int, PartialValue::Float],
+                vec![PartialValue::Int, PartialValue::Float, PartialValue::Bool],
                 ctx,
                 span,
             )?;
@@ -541,33 +541,65 @@ fn infer_lambda(
     ctx: &mut Context,
     span: &mut Span,
 ) -> TypeResult<InferredExpr> {
-    // TODO:
-    // NEED TO FIX LABEL INFERENCE.
-
     ctx.type_env.insert(var.clone(), var_ty.clone());
 
     let mut body = infer_expr(expr, ctx)?;
     unify(&mut ret_ty.value, &mut body.ty.value)?;
-    let labels = join_labels(&ret_ty.labels, &body.ty.labels);
 
-    let fun_type = PartialValue::Function {
-        param: Box::new(var_ty.clone()),
-        return_type: Box::new(body.ty.clone()),
-    };
+    dbg!(&ret_ty.labels);
+    if ret_ty.labels.is_none() {
+        let labels = join_labels(&ret_ty.labels, &body.ty.labels);
+        body.ty.labels = Some(labels);
 
-    Ok(InferredExpr {
-        expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Lambda {
-            var: var.clone(),
-            var_ty: var_ty.clone(),
-            ret_ty: body.ty.clone(),
-            expr: body,
-        })),
-        ty: PartialType {
-            value: Some(fun_type),
-            labels: Some(labels),
-        },
-        meta: span.to_owned(),
-    })
+        let fun_type = PartialValue::Function {
+            param: Box::new(var_ty.clone()),
+            return_type: Box::new(body.ty.clone()),
+        };
+
+        Ok(InferredExpr {
+            expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Lambda {
+                var: var.clone(),
+                var_ty: var_ty.clone(),
+                ret_ty: body.ty.clone(),
+                expr: body,
+            })),
+            ty: PartialType {
+                value: Some(fun_type),
+                labels: Some(Labels::empty()),
+            },
+            meta: span.to_owned(),
+        })
+    } else if flows_to(&mut body.ty.labels, &mut ret_ty.labels)
+        .ok_or(TypeError::MissingType(span.clone()))?
+    {
+        body.ty.labels = ret_ty.labels.clone();
+
+        let fun_type = PartialValue::Function {
+            param: Box::new(var_ty.clone()),
+            return_type: Box::new(body.ty.clone()),
+        };
+
+        Ok(InferredExpr {
+            expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Lambda {
+                var: var.clone(),
+                var_ty: var_ty.clone(),
+                ret_ty: body.ty.clone(),
+                expr: body,
+            })),
+            ty: PartialType {
+                value: Some(fun_type),
+                labels: Some(Labels::empty()),
+            },
+            meta: span.to_owned(),
+        })
+    } else {
+        Err(TypeError::InvalidFlow(
+            body.ty.labels.unwrap(),
+            ret_ty.labels.clone().unwrap(),
+            span.clone(),
+        ))
+    }
+
 }
 
 fn infer_apply(
@@ -596,13 +628,11 @@ fn infer_apply(
 
     unify(&mut arg.ty.value, &mut param.value)?;
 
-    let labels = join_labels(&fun.ty.labels, &arg.ty.labels);
-
     Ok(InferredExpr {
         expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Apply { fun, arg })),
         ty: PartialType {
             value: return_type.value,
-            labels: Some(labels),
+            labels: return_type.labels,
         },
         meta: span.to_owned(),
     })
@@ -628,7 +658,7 @@ fn infer_block(
     } else {
         PartialType {
             value: Some(PartialValue::Unit),
-            labels: None,
+            labels: Some(Labels::empty())
         }
     };
 
