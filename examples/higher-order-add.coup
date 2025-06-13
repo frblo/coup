@@ -1,0 +1,15 @@
+// Higher-Order function example
+
+let fun = .\ (step_fun: (int@[]->int@["a"])@[], val: int@[]) -> int@["a"] => step_fun(val);
+let add_fun = .\ (x: int@[]) -> int@["a"] => x + 1;
+let inc_fun = fun(add_fun);
+let i: int = 10;
+let res = 0;
+
+while i > 0 {
+    let res = inc_fun(res);
+    let i = i - 1;
+}
+
+// Return outside block can be used to print
+return res;
