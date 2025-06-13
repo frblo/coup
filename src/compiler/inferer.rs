@@ -627,15 +627,24 @@ fn infer_apply(
     };
 
     unify(&mut arg.ty.value, &mut param.value)?;
-
-    Ok(InferredExpr {
-        expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Apply { fun, arg })),
-        ty: PartialType {
-            value: return_type.value,
-            labels: return_type.labels,
-        },
-        meta: span.to_owned(),
-    })
+    if flows_to(&arg.ty.labels, &param.labels)
+        .ok_or(TypeError::MissingType(span.clone()))?
+    {
+        Ok(InferredExpr {
+            expr: InferredExprKind::Function(Box::new(InferredFunctionExpr::Apply { fun, arg })),
+            ty: PartialType {
+                value: return_type.value,
+                labels: return_type.labels,
+            },
+            meta: span.to_owned(),
+        })
+    } else {
+        Err(TypeError::InvalidFlow(
+            arg.ty.labels.unwrap(),
+            param.labels.clone().unwrap(),
+            span.clone(),
+        ))
+    }
 }
 
 fn infer_block(
