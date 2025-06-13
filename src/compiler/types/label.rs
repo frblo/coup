@@ -11,6 +11,10 @@ impl Labels {
         Self(syms)
     }
 
+    pub fn empty() -> Self {
+        Self(Vec::new())
+    }
+
     pub fn join_labels(&self, other: &Self) -> Labels {
         let mut set: HashSet<LabelSymbol> = self.0.iter().cloned().collect();
         set.extend(other.0.iter().cloned());

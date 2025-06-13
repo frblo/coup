@@ -17,7 +17,7 @@ impl Span {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProgramWith<T, M>(pub Vec<StmtWith<T, M>>);
 
 impl<T, M> ProgramWith<T, M> {
@@ -26,7 +26,7 @@ impl<T, M> ProgramWith<T, M> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StmtWith<T, M> {
     pub stmt: StmtKind<T, M>,
     pub ty: T,
@@ -39,7 +39,7 @@ impl<T, M> StmtWith<T, M> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StmtKind<T, M> {
     Skip,
     Let {
@@ -61,7 +61,7 @@ pub enum StmtKind<T, M> {
     Return(ExprWith<T, M>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprWith<T, M> {
     pub expr: ExprKind<T, M>,
     pub ty: T,
@@ -74,7 +74,7 @@ impl<T, M> ExprWith<T, M> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExprKind<T, M> {
     Bool(Box<BoolExprWith<T, M>>),
     Arithmetic(Box<ArithmeticExprWith<T, M>>),
@@ -84,7 +84,7 @@ pub enum ExprKind<T, M> {
     Var(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BoolExprWith<T, M> {
     And(ExprWith<T, M>, ExprWith<T, M>),
     Or(ExprWith<T, M>, ExprWith<T, M>),
@@ -96,7 +96,7 @@ pub enum BoolExprWith<T, M> {
     Geq(ExprWith<T, M>, ExprWith<T, M>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ArithmeticExprWith<T, M> {
     Add(ExprWith<T, M>, ExprWith<T, M>),
     Sub(ExprWith<T, M>, ExprWith<T, M>),
@@ -105,7 +105,7 @@ pub enum ArithmeticExprWith<T, M> {
     Mod(ExprWith<T, M>, ExprWith<T, M>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FunctionExprWith<T, M> {
     Lambda {
         var: String,
